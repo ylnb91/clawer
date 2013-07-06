@@ -1,10 +1,8 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -17,22 +15,20 @@ import java.util.regex.Pattern;
  */
 public class WriteToDoc {
 
-    private ArrayList<String> allUrl = new ArrayList<String>();
-    private StringBuilder sb = new StringBuilder();
-    private int threadcount = 10;
-    public static final Object signal = new Object();
+    private ArrayList<String> allUrl = null;
+    private StringBuffer sb = new StringBuffer();
+    private int threadcount = 50;
+    private int count = 0;
 
     public WriteToDoc(ArrayList<String> allurlSet) {
+        allUrl = new ArrayList(Arrays.asList(new String[allurlSet.size()]));
         Collections.copy(this.allUrl, allurlSet);
     }
 
     public WriteToDoc(ArrayList<String> allurlSet, int threadcount) {
+        allUrl = new ArrayList(Arrays.asList(new String[allurlSet.size()]));
         Collections.copy(this.allUrl, allurlSet);
         this.threadcount = threadcount;
-    }
-
-    public void setAllUrl(ArrayList<String> allurlSet) {
-        Collections.copy(allUrl, allurlSet);
     }
 
     public void setThreadcount(int threadcount) {
@@ -56,23 +52,17 @@ public class WriteToDoc {
     public void run() {
         for (int i = 0; i < threadcount; i++) {
             new Thread(new Runnable() {
-                @Override
                 public void run() {
-                    while (true) {
+                    while (!Thread.currentThread().isInterrupted()) {
                         String s = getUrl();
                         if (s == null) {
-                            synchronized (signal) {
-                                try {
-                                    signal.wait();
-                                } catch (InterruptedException e) {
-                                    e.printStackTrace();
-                                }
-                            }
+                            count++;
+                            Thread.currentThread().interrupt();
                         } else
                             readFromUrl(s);
                     }
                 }
-            }).run();
+            }).start();
         }
     }
 
@@ -84,30 +74,51 @@ public class WriteToDoc {
             urlconnection.addRequestProperty("User-Agent", "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0)");
             InputStream is = url.openStream();
             BufferedReader bReader = new BufferedReader(new InputStreamReader(is, "gb2312"));
-            StringBuffer sb = new StringBuffer();//sb为爬到的网页内容
+            StringBuffer sbr = new StringBuffer();//sb为爬到的网页内容
             String rLine = null;
             while ((rLine = bReader.readLine()) != null)
-                sb.append(rLine);
-            getInfo(sb.toString());
+                sbr.append(rLine);
+            getInfo(sbr.toString());
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private void getInfo(String context) {
-        String regex = "<dt>心　　得：</dt><dd>.*</dd>";
+        String regex = "<dt>心.*?得：</dt>\\s*<dd>.*?</dd>";
         Pattern pt = Pattern.compile(regex);
         Matcher mt = pt.matcher(context);
         StringBuffer strB = new StringBuffer();
         while (mt.find()) {
-            strB.append(mt.group().replaceAll("<dt>心　　得：</dt><dd>|</dd>","")).append("/r/n");
+            strB.append(mt.group().replaceAll("<dt>心.*?得：</dt>\\s*<dd>|</dd>","")).append("/r/n");
         }
+
         addInfo(strB);
     }
 
     public boolean write(){
-        System.out.print(sb);
-        return true;
+        while(true){
+            if(count==threadcount){
+                String path="e://a.txt";
+                try {
+                    FileWriter fw = new FileWriter(path,true);
+                    BufferedWriter bw = new BufferedWriter(fw);
+                    Pattern pt = Pattern.compile(".*?/r/n");
+                    Matcher mt = pt.matcher(sb.toString());
+                    while (mt.find()) {
+                        bw.newLine();
+                        bw.write((mt.group().replaceAll("/r/n","")));
+
+                    }
+                    bw.close();
+                    fw.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                System.out.print("end");
+                return true;
+            }
+      }
     }
 
 }
